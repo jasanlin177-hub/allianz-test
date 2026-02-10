@@ -10,35 +10,57 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
         
-        /* === 優化後的滑桿 CSS === */
+        /* === 核心修復：讓滑桿互不干擾 === */
         .slider-container { position: relative; height: 40px; margin-top: 10px; touch-action: none; }
         
-        /* 軌道背景 */
         .slider-track {
             position: absolute; top: 50%; transform: translateY(-50%);
             height: 6px; width: 100%; background: #e2e8f0; border-radius: 999px; z-index: 1;
         }
-        /* 選取範圍 (藍色條) */
         .slider-range {
             position: absolute; top: 50%; transform: translateY(-50%);
             height: 6px; background: #3b82f6; z-index: 2; border-radius: 999px;
-            pointer-events: none; /* 讓點擊穿透 */
         }
-        /* 兩個隱藏的原生 Input，疊在一起 */
+        
+        /* 關鍵 CSS：input 本身不擋滑鼠，只有圓點 (thumb) 擋滑鼠 */
         input[type=range] {
-            position: absolute; pointer-events: auto; -webkit-appearance: none;
-            z-index: 3; height: 100%; width: 100%; opacity: 0; cursor: pointer;
+            position: absolute; 
+            pointer-events: none; /* 讓點擊穿透透明軌道 */
+            -webkit-appearance: none;
+            z-index: 3; 
+            height: 100%; 
+            width: 100%; 
+            opacity: 0; 
+            cursor: pointer;
             top: 0; margin: 0;
         }
-        /* 視覺上的圓點 (Thumb) */
+        
+        /* 針對 Webkit (Chrome, Safari, Edge) 的圓點設定 */
+        input[type=range]::-webkit-slider-thumb {
+            pointer-events: auto; /* 圓點恢復可點擊 */
+            -webkit-appearance: none;
+            width: 30px; height: 30px; /* 加大觸控區 */
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        /* 針對 Firefox 的圓點設定 */
+        input[type=range]::-moz-range-thumb {
+            pointer-events: auto;
+            width: 30px; height: 30px;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        /* 視覺上的圓點 (Thumb Visuals) */
         .thumb {
             position: absolute; top: 50%; transform: translate(-50%, -50%);
-            width: 24px; height: 24px; background: #fff; border: 2px solid #2563eb;
+            width: 20px; height: 20px; background: #fff; border: 2px solid #2563eb;
             border-radius: 50%; z-index: 4; box-shadow: 0 2px 5px rgba(0,0,0,0.2); pointer-events: none;
             transition: transform 0.1s, box-shadow 0.1s;
         }
-        /* 讓圓點看起來有互動感 */
-        .slider-container:hover .thumb { box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
+        /* 避免被選取 */
+        .no-select { user-select: none; -webkit-user-select: none; }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen pb-12">
@@ -61,12 +83,17 @@
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
         
-        <div class="lg:col-span-3 space-y-6">
+        <div class="lg:col-span-4 space-y-6">
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-                <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">回測參數設定</h2>
+                <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">投資策略設定</h2>
                 
-                <div class="mb-4">
-                    <label class="block text-sm font-medium text-slate-700 mb-1">單筆投入金額</label>
+                <div class="flex bg-slate-100 p-1 rounded-lg mb-6">
+                    <button id="btn-mode-lump" onclick="switchMode('lump')" class="flex-1 py-2 text-sm font-medium rounded-md shadow bg-white text-blue-700 transition-all">單筆投入</button>
+                    <button id="btn-mode-dca" onclick="switchMode('dca')" class="flex-1 py-2 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all">定期定額</button>
+                </div>
+
+                <div id="input-lump" class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">單筆投入金額 (TWD)</label>
                     <div class="relative rounded-md shadow-sm">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <span class="text-slate-500 sm:text-sm">$</span>
@@ -75,8 +102,8 @@
                     </div>
                 </div>
 
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-slate-700 mb-1">每月定期定額</label>
+                <div id="input-dca" class="mb-6 hidden">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">每月扣款金額 (TWD)</label>
                     <div class="relative rounded-md shadow-sm">
                         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <span class="text-slate-500 sm:text-sm">$</span>
@@ -85,21 +112,37 @@
                     </div>
                     <p class="text-xs text-slate-400 mt-2 flex items-center">
                         <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg>
-                        每月 1 號自動扣款
+                        系統自動鎖定每月 1 號 (或首個交易日) 扣款
                     </p>
                 </div>
 
-                <div class="border-t border-slate-100 pt-4">
-                    <button onclick="forceRecalculate()" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-                        重新計算
-                    </button>
+                <div class="mt-6 pt-6 border-t border-slate-100">
+                    <h3 id="result-title" class="text-sm font-medium text-slate-500 mb-3">單筆投入績效</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-slate-50 p-3 rounded-lg">
+                            <p class="text-xs text-slate-400 mb-1">總投入成本</p>
+                            <p id="res-cost" class="text-lg font-bold text-slate-700">--</p>
+                        </div>
+                        <div class="bg-slate-50 p-3 rounded-lg">
+                            <p class="text-xs text-slate-400 mb-1">期末總資產</p>
+                            <p id="res-final" class="text-lg font-bold text-blue-700">--</p>
+                        </div>
+                    </div>
+                    <div class="mt-4 flex items-center justify-between bg-white border border-slate-100 p-3 rounded-lg shadow-sm">
+                        <span class="text-sm text-slate-600 font-medium">總報酬率</span>
+                        <span id="res-roi" class="text-xl font-bold text-gray-400">0.0%</span>
+                    </div>
                 </div>
+
+                <button onclick="forceRecalculate()" class="w-full mt-6 flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-md text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none transition-transform active:scale-95">
+                    立即試算 🚀
+                </button>
             </div>
 
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
                 <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">回測期間選擇</h2>
                 
-                <div class="flex justify-between text-sm font-medium text-slate-700 mb-2">
+                <div class="flex justify-between text-sm font-medium text-slate-700 mb-2 no-select">
                     <span id="label-start-date" class="tabular-nums">--</span>
                     <span id="label-end-date" class="tabular-nums">--</span>
                 </div>
@@ -117,54 +160,13 @@
             </div>
         </div>
 
-        <div class="lg:col-span-9 space-y-6">
+        <div class="lg:col-span-8 space-y-6">
             
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 p-3 opacity-10">
-                        <svg class="w-16 h-16" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
-                    </div>
-                    <h3 class="text-slate-500 text-sm font-medium">單筆投入績效 (Lump Sum)</h3>
-                    <div class="mt-2 flex items-baseline">
-                        <span id="res-ls-final" class="text-2xl font-bold text-slate-900">--</span>
-                        <span class="ml-2 text-sm text-slate-500">總資產</span>
-                    </div>
-                    <div class="mt-1">
-                        <span id="res-ls-roi" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
-                            0.00%
-                        </span>
-                        <span class="text-xs text-slate-400 ml-1">報酬率</span>
-                    </div>
-                </div>
-
-                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 p-3 opacity-10">
-                        <svg class="w-16 h-16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg>
-                    </div>
-                    <h3 class="text-slate-500 text-sm font-medium">定期定額績效 (DCA)</h3>
-                    <div class="mt-2 flex items-baseline">
-                        <span id="res-dca-final" class="text-2xl font-bold text-slate-900">--</span>
-                        <span class="ml-2 text-sm text-slate-500">總資產</span>
-                    </div>
-                    <div class="mt-1 flex justify-between items-center pr-4">
-                        <div>
-                            <span id="res-dca-roi" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
-                                0.00%
-                            </span>
-                            <span class="text-xs text-slate-400 ml-1">報酬率</span>
-                        </div>
-                        <div class="text-xs text-slate-400">
-                            投入成本: <span id="res-dca-cost">--</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-lg font-bold text-slate-800">歷史淨值走勢 (NAV)</h3>
                 </div>
-                <div class="relative h-72 w-full">
+                <div class="relative h-80 w-full">
                     <canvas id="chartNAV"></canvas>
                 </div>
             </div>
@@ -175,7 +177,7 @@
                         回撤風險 (Underwater Plot)
                         <div class="group relative ml-2">
                             <svg class="w-4 h-4 text-slate-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <span class="group-hover:opacity-100 transition-opacity bg-gray-800 px-2 py-1 text-xs text-white rounded-md absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 w-48 text-center pointer-events-none">
+                            <span class="group-hover:opacity-100 transition-opacity bg-gray-800 px-2 py-1 text-xs text-white rounded-md absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 w-48 text-center pointer-events-none z-10">
                                 顯示當前價格距離歷史最高點跌了多少百分比。
                             </span>
                         </div>
@@ -195,7 +197,8 @@
         let displayData = []; 
         let chartNAV = null;
         let chartDrawdown = null;
-        let debounceTimer = null; // 用於延遲計算，解決滑桿卡頓
+        let debounceTimer = null; 
+        let currentMode = 'lump'; // 'lump' (單筆) or 'dca' (定期定額)
 
         // --- 初始化 ---
         async function initData() {
@@ -212,17 +215,13 @@
 
                 initSlider();
                 
-                // 初始顯示最近 3 年 (或全部如果不足3年)
+                // 預設顯示全部資料
                 const rangeStart = document.getElementById('range-start');
                 const rangeEnd = document.getElementById('range-end');
-                const startIdx = Math.max(0, fullData.length - 750); // 大約3年
-                
-                rangeStart.value = startIdx;
+                rangeStart.value = 0;
                 rangeEnd.value = fullData.length - 1;
                 
-                // 觸發一次視覺更新
                 updateSliderVisuals();
-                // 觸發一次計算
                 updateCharts();
 
             } catch (e) {
@@ -231,7 +230,34 @@
             }
         }
 
-        // --- 滑桿邏輯 (優化版) ---
+        // --- 切換模式 (Tabs) ---
+        function switchMode(mode) {
+            currentMode = mode;
+            const btnLump = document.getElementById('btn-mode-lump');
+            const btnDca = document.getElementById('btn-mode-dca');
+            const inputLump = document.getElementById('input-lump');
+            const inputDca = document.getElementById('input-dca');
+            const resultTitle = document.getElementById('result-title');
+
+            if (mode === 'lump') {
+                // 樣式切換
+                btnLump.className = "flex-1 py-2 text-sm font-medium rounded-md shadow bg-white text-blue-700 transition-all";
+                btnDca.className = "flex-1 py-2 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all";
+                // 欄位切換
+                inputLump.classList.remove('hidden');
+                inputDca.classList.add('hidden');
+                resultTitle.innerText = "單筆投入績效";
+            } else {
+                btnLump.className = "flex-1 py-2 text-sm font-medium rounded-md text-slate-500 hover:text-slate-700 transition-all";
+                btnDca.className = "flex-1 py-2 text-sm font-medium rounded-md shadow bg-white text-blue-700 transition-all";
+                inputLump.classList.add('hidden');
+                inputDca.classList.remove('hidden');
+                resultTitle.innerText = "定期定額績效";
+            }
+            calculateMetrics(); // 重新計算結果
+        }
+
+        // --- 滑桿邏輯 (修復左滑桿卡頓) ---
         function initSlider() {
             const rangeStart = document.getElementById('range-start');
             const rangeEnd = document.getElementById('range-end');
@@ -245,7 +271,6 @@
             rangeEnd.addEventListener('input', handleSliderInput);
         }
 
-        // 處理滑動輸入：視覺立即更新，計算延遲執行 (Debounce)
         function handleSliderInput(e) {
             const rangeStart = document.getElementById('range-start');
             const rangeEnd = document.getElementById('range-end');
@@ -253,8 +278,9 @@
             let startVal = parseInt(rangeStart.value);
             let endVal = parseInt(rangeEnd.value);
 
-            // 防止交叉 (最少保留 20 筆資料)
-            const minGap = 20;
+            const minGap = 20; // 最小間隔
+            
+            // 防止交叉邏輯
             if (e.target.id === 'range-start') {
                 if (startVal > endVal - minGap) {
                     rangeStart.value = endVal - minGap;
@@ -265,14 +291,14 @@
                 }
             }
 
-            // 1. 立即更新視覺 (不卡頓)
+            // 1. 視覺立即更新 (不卡頓)
             updateSliderVisuals();
 
-            // 2. 延遲更新圖表 (解決效能問題)
+            // 2. 延遲計算
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 updateCharts();
-            }, 100); // 停止滑動 100ms 後才重畫圖表
+            }, 50); // 50ms 延遲
         }
 
         function updateSliderVisuals() {
@@ -296,12 +322,12 @@
             if(fullData[endIdx]) document.getElementById('label-end-date').innerText = fullData[endIdx][0];
         }
 
-        // --- 強制重新計算 (按鈕用) ---
+        // --- 強制重新計算 ---
         function forceRecalculate() {
-            updateCharts();
+            calculateMetrics();
         }
 
-        // --- 核心算法 ---
+        // --- 繪製圖表與計算 ---
         function updateCharts() {
             const rangeStart = parseInt(document.getElementById('range-start').value);
             const rangeEnd = parseInt(document.getElementById('range-end').value);
@@ -327,59 +353,60 @@
         function calculateMetrics() {
             if (displayData.length === 0) return;
 
-            const lumpSumAmt = parseFloat(document.getElementById('lump-sum-amount').value) || 0;
-            const dcaAmt = parseFloat(document.getElementById('dca-amount').value) || 0;
+            // 根據模式選擇計算邏輯
+            let totalCost = 0;
+            let finalValue = 0;
+            let roi = 0;
 
-            // 1. 單筆投入
             const startPrice = displayData[0][1];
             const endPrice = displayData[displayData.length - 1][1];
+
+            if (currentMode === 'lump') {
+                // 單筆投入
+                const lumpSumAmt = parseFloat(document.getElementById('lump-sum-amount').value) || 0;
+                totalCost = lumpSumAmt;
+                const units = lumpSumAmt / startPrice;
+                finalValue = units * endPrice;
+                roi = totalCost > 0 ? ((finalValue - totalCost) / totalCost) * 100 : 0;
+
+            } else {
+                // 定期定額 (每月1號)
+                const dcaAmt = parseFloat(document.getElementById('dca-amount').value) || 0;
+                let totalUnits = 0;
+                let lastInvestMonth = "";
+
+                displayData.forEach(row => {
+                    const dateStr = row[0];
+                    const nav = row[1];
+                    const monthStr = dateStr.substring(0, 7);
+
+                    // 遇到該月份第一筆資料就買入
+                    if (lastInvestMonth !== monthStr) {
+                        const unitsBought = dcaAmt / nav;
+                        totalUnits += unitsBought;
+                        totalCost += dcaAmt;
+                        lastInvestMonth = monthStr;
+                    }
+                });
+                finalValue = totalUnits * endPrice;
+                roi = totalCost > 0 ? ((finalValue - totalCost) / totalCost) * 100 : 0;
+            }
+
+            // 更新 UI
+            document.getElementById('res-cost').innerText = formatCurrency(totalCost);
+            document.getElementById('res-final').innerText = formatCurrency(finalValue);
             
-            const lsUnits = lumpSumAmt / startPrice;
-            const lsFinalValue = lsUnits * endPrice;
-            const lsRoi = ((lsFinalValue - lumpSumAmt) / lumpSumAmt) * 100;
-
-            // 2. 定期定額 (每月1號)
-            let totalCost = 0;
-            let totalUnits = 0;
-            let lastInvestMonth = "";
-
-            displayData.forEach(row => {
-                const dateStr = row[0];
-                const nav = row[1];
-                const monthStr = dateStr.substring(0, 7);
-
-                if (lastInvestMonth !== monthStr) {
-                    const unitsBought = dcaAmt / nav;
-                    totalUnits += unitsBought;
-                    totalCost += dcaAmt;
-                    lastInvestMonth = monthStr;
-                }
-            });
-
-            const dcaFinalValue = totalUnits * endPrice;
-            const dcaRoi = totalCost > 0 ? ((dcaFinalValue - totalCost) / totalCost) * 100 : 0;
-
-            updateResultUI('res-ls-final', 'res-ls-roi', lsFinalValue, lsRoi);
-            updateResultUI('res-dca-final', 'res-dca-roi', dcaFinalValue, dcaRoi);
-            document.getElementById('res-dca-cost').innerText = formatCurrency(totalCost);
-        }
-
-        function updateResultUI(idFinal, idRoi, final, roi) {
-            document.getElementById(idFinal).innerText = formatCurrency(final);
-            const roiEl = document.getElementById(idRoi);
-            
+            const roiEl = document.getElementById('res-roi');
             roiEl.innerText = roi.toFixed(2) + "%";
             
-            // 移除舊顏色 class
-            roiEl.classList.remove('bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800', 'bg-gray-100', 'text-gray-800');
-            
+            roiEl.classList.remove('text-red-500', 'text-green-500', 'text-gray-400');
             if (roi > 0) {
-                roiEl.classList.add('bg-red-100', 'text-red-800');
+                roiEl.classList.add('text-red-500');
                 roiEl.innerText = "+" + roiEl.innerText;
             } else if (roi < 0) {
-                roiEl.classList.add('bg-green-100', 'text-green-800');
+                roiEl.classList.add('text-green-500');
             } else {
-                roiEl.classList.add('bg-gray-100', 'text-gray-800');
+                roiEl.classList.add('text-gray-400');
             }
         }
 
@@ -387,7 +414,7 @@
             return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(num);
         }
 
-        // --- 圖表繪製 ---
+        // --- Chart.js 繪圖 ---
         function renderNAVChart(labels, data) {
             const ctx = document.getElementById('chartNAV').getContext('2d');
             if (chartNAV) chartNAV.destroy();
