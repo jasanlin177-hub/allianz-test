@@ -1,36 +1,132 @@
-// 刪除原本的 const fullData = [...]
-let fullData = [];
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>安聯淨值回測系統</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 p-6">
 
-// 改用非同步抓取
-async function initData() {
-    // 顯示載入中...
-    const finalValueEl = document.getElementById('res_finalValue');
-    if(finalValueEl) finalValueEl.innerText = "載入中...";
-
-    try {
-        const response = await fetch('data.json');
+    <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6">
+        <h1 class="text-2xl font-bold mb-4 text-gray-800">安聯台灣科技基金 - 淨值回測</h1>
         
-        // 檢查是否讀取成功
-        if (!response.ok) {
-            throw new Error(`找不到資料檔案 (${response.status})`);
+        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-6 rounded" role="alert">
+            <p id="status-badge">正在載入數據...</p>
+        </div>
+
+        <div class="mb-6">
+            <span class="text-gray-600">最新淨值：</span>
+            <span id="res_finalValue" class="text-3xl font-bold text-green-600">--</span>
+        </div>
+
+        <div class="relative h-96 w-full">
+            <canvas id="myChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // 全域變數
+        let fullData = [];
+        let myChart = null;
+
+        // --- 核心功能：初始化數據 ---
+        async function initData() {
+            const statusEl = document.getElementById('status-badge');
+            const finalValueEl = document.getElementById('res_finalValue');
+
+            try {
+                // 1. 抓取 data.json
+                const response = await fetch('data.json');
+                
+                // 檢查是否成功
+                if (!response.ok) {
+                    throw new Error(`找不到資料檔案 (${response.status})`);
+                }
+
+                fullData = await response.json();
+
+                // 2. 獲取最新一筆資料
+                // data.json 格式預期是: [ ["2001-04-03", 10.0], ... ]
+                const lastItem = fullData[fullData.length - 1];
+                const lastDate = lastItem[0];
+                const lastValue = lastItem[1];
+
+                // 3. 更新畫面文字
+                if(statusEl) statusEl.innerText = `數據已更新至 ${lastDate} (共 ${fullData.length} 筆)`;
+                if(finalValueEl) finalValueEl.innerText = lastValue;
+
+                // 4. 繪製圖表
+                renderChart();
+
+            } catch (e) {
+                console.error("無法載入數據", e);
+                if(statusEl) {
+                    statusEl.innerText = "❌ 資料讀取失敗";
+                    statusEl.parentElement.classList.replace('bg-blue-100', 'bg-red-100');
+                    statusEl.parentElement.classList.replace('border-blue-500', 'border-red-500');
+                    statusEl.parentElement.classList.replace('text-blue-700', 'text-red-700');
+                }
+                alert("讀取失敗！請確認 GitHub Actions 是否已成功執行。\n詳細錯誤：" + e.message);
+            }
         }
-        
-        fullData = await response.json();
-        
-        // 獲取最新日期
-        const lastDate = fullData[fullData.length - 1][0];
-        const badge = document.querySelector('.bg-blue-100');
-        if(badge) badge.innerText = `數據已更新至 ${lastDate}`;
-        
-        updateDateLabel();
-        calculate();
 
+        // --- 繪圖功能 ---
+        function renderChart() {
+            const ctx = document.getElementById('myChart').getContext('2d');
+            
+            // 準備 X 軸 (日期) 和 Y 軸 (淨值) 數據
+            const labels = fullData.map(item => item[0]);
+            const prices = fullData.map(item => item[1]);
 
-    } catch (e) {
-        console.error("無法載入數據", e);
-        // 將錯誤顯示在畫面上，方便除錯
-        alert("資料讀取失敗！原因可能為：\n1. 您是直接雙擊開啟檔案 (請用 Live Server)\n2. data.json 尚未產生 (請去 GitHub Actions 執行腳本)\n\n詳細錯誤：" + e.message);
-    }
-}
+            if (myChart) {
+                myChart.destroy(); // 如果圖表已存在，先銷毀
+            }
 
-window.onload = initData;
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '基金淨值',
+                        data: prices,
+                        borderColor: 'rgb(37, 99, 235)', // 藍色線條
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        borderWidth: 1,
+                        pointRadius: 0, // 不顯示每個點，讓線條更平滑
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        tooltip: {
+                            enabled: true
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: { display: true, text: '日期' }
+                        },
+                        y: {
+                            display: true,
+                            title: { display: true, text: '淨值 (TWD)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 網頁載入後執行
+        window.onload = initData;
+    </script>
+</body>
+</html>
