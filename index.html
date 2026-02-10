@@ -3,18 +3,32 @@ let fullData = [];
 
 // 改用非同步抓取
 async function initData() {
+    // 顯示載入中...
+    const finalValueEl = document.getElementById('res_finalValue');
+    if(finalValueEl) finalValueEl.innerText = "載入中...";
+
     try {
         const response = await fetch('data.json');
+        
+        // 檢查是否讀取成功
+        if (!response.ok) {
+            throw new Error(`找不到資料檔案 (${response.status})`);
+        }
+        
         fullData = await response.json();
         
-        // 獲取最新日期顯示在頁面
+        // 獲取最新日期
         const lastDate = fullData[fullData.length - 1][0];
-        document.querySelector('.bg-blue-100').innerText = `數據已更新至 ${lastDate}`;
+        const badge = document.querySelector('.bg-blue-100');
+        if(badge) badge.innerText = `數據已更新至 ${lastDate}`;
         
         updateDateLabel();
         calculate();
+        
     } catch (e) {
         console.error("無法載入數據", e);
+        // 將錯誤顯示在畫面上，方便除錯
+        alert("資料讀取失敗！原因可能為：\n1. 您是直接雙擊開啟檔案 (請用 Live Server)\n2. data.json 尚未產生 (請去 GitHub Actions 執行腳本)\n\n詳細錯誤：" + e.message);
     }
 }
 
