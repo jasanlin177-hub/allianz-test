@@ -1,9 +1,9 @@
-name: Daily Fund Data Update
+name: Daily Allianz NAV Update
 
 on:
   schedule:
-    - cron: '0 10 * * *' # 每天台灣時間下午 6 點執行 (UTC 10:00)
-  workflow_dispatch: # 允許手動執行
+    - cron: '0 11 * * *' # 每天台灣時間晚上 7 點執行 (UTC 11:00)，確保官網已更新
+  workflow_dispatch: # 允許手動觸發
 
 jobs:
   update:
@@ -17,15 +17,22 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: pip install yfinance
+        run: |
+          pip install requests beautifulsoup4 pandas
 
+      # 步驟 1: 如果 data.json 不存在，嘗試用 CSV 初始化
+      - name: Initialize Data (if needed)
+        run: python init_data.py
+        
+      # 步驟 2: 執行每日更新
       - name: Run Update Script
         run: python update_data.py
 
+      # 步驟 3: 存檔
       - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add data.json
-          git commit -m "Auto update fund data: $(date +'%Y-%m-%d')" || exit 0
+          git commit -m "Auto update NAV: $(date +'%Y-%m-%d')" || exit 0
           git push
