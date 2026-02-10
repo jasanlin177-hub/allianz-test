@@ -2,12 +2,18 @@ name: Daily Allianz NAV Update
 
 on:
   schedule:
-    - cron: '0 11 * * *' # 每天台灣時間晚上 7 點執行 (UTC 11:00)，確保官網已更新
-  workflow_dispatch: # 允許手動觸發
+    - cron: '0 11 * * *'
+  workflow_dispatch:
+
+# --- 加入這段 (強制開啟寫入權限) ---
+permissions:
+  contents: write
+# --------------------------------
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    # ... (下方保持不變)
     steps:
       - uses: actions/checkout@v3
 
