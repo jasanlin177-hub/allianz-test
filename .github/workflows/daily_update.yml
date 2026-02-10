@@ -1,17 +1,15 @@
-name: Daily Index Update
+name: Daily Fund Data Update
 
 on:
   schedule:
-    # 每天台灣時間 18:00 執行 (UTC 10:00)
-    - cron: '0 10 * * *'
-  workflow_dispatch: # 允許手動從 GitHub 頁面觸發
+    - cron: '0 10 * * *' # 每天台灣時間下午 6 點執行 (UTC 10:00)
+  workflow_dispatch: # 允許手動執行
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -19,16 +17,15 @@ jobs:
           python-version: '3.9'
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install yfinance
 
-      - name: Run update script
+      - name: Run Update Script
         run: python update_data.py
 
-      - name: Commit and Push changes
+      - name: Commit and Push
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add .
-          git commit -m "Auto-update index data: $(date)" || echo "No changes to commit"
+          git add data.json
+          git commit -m "Auto update fund data: $(date +'%Y-%m-%d')" || exit 0
           git push
