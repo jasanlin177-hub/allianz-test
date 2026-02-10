@@ -3,98 +3,251 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>安聯淨值回測系統</title>
+    <title>安聯台灣科技基金 - 淨值回測系統</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; }
+    </style>
 </head>
-<body class="bg-gray-100 p-6">
+<body class="bg-slate-100 min-h-screen py-8 px-4">
 
-    <div class="max-w-4xl mx-auto bg-white rounded-lg shadow-lg p-6">
-        <h1 class="text-2xl font-bold mb-4 text-gray-800">安聯台灣科技基金 - 淨值回測</h1>
+    <div class="max-w-5xl mx-auto space-y-6">
         
-        <div class="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-6 rounded" role="alert">
-            <p id="status-badge">正在載入數據...</p>
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-800 tracking-tight">安聯台灣科技基金</h1>
+            <p class="text-slate-500 mt-2">歷史淨值回測與定期定額試算</p>
+            <div id="status-badge" class="inline-block mt-3 px-4 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
+                正在連線至資料庫...
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <div class="bg-white rounded-2xl shadow-sm p-6 lg:col-span-1 border border-slate-200">
+                <h2 class="text-xl font-bold text-slate-700 mb-5 flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
+                    試算設定
+                </h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">每月定期定額 (TWD)</label>
+                        <div class="relative">
+                            <span class="absolute left-3 top-2 text-slate-400">$</span>
+                            <input type="number" id="monthly-amount" value="5000" class="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" placeholder="例如: 5000">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-600 mb-1">每月扣款日</label>
+                        <select id="deduct-day" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                            <option value="6">每月 6 號</option>
+                            <option value="16">每月 16 號</option>
+                            <option value="26">每月 26 號</option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">開始日期</label>
+                            <input type="date" id="start-date" class="w-full px-2 py-2 border border-slate-300 rounded-lg text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">結束日期</label>
+                            <input type="date" id="end-date" class="w-full px-2 py-2 border border-slate-300 rounded-lg text-sm">
+                        </div>
+                    </div>
+
+                    <button onclick="calculate()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/30 transition transform active:scale-95">
+                        開始試算 🚀
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm p-6 lg:col-span-2 border border-slate-200">
+                <h2 class="text-xl font-bold text-slate-700 mb-5">試算結果</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <p class="text-sm text-slate-500 mb-1">總投入本金</p>
+                        <p id="res-total-cost" class="text-2xl font-bold text-slate-800">0</p>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <p class="text-sm text-slate-500 mb-1">目前資產現值</p>
+                        <p id="res-final-value" class="text-2xl font-bold text-slate-800">0</p>
+                    </div>
+
+                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <p class="text-sm text-slate-500 mb-1">累積報酬率</p>
+                        <p id="res-roi" class="text-2xl font-bold text-gray-400">0.0%</p>
+                    </div>
+                </div>
+
+                <div class="mt-6 pt-6 border-t border-slate-100 grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="text-slate-500">累積單位數：</span>
+                        <span id="res-units" class="font-semibold text-slate-700">0</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500">最新淨值日：</span>
+                        <span id="res-last-date" class="font-semibold text-slate-700">--</span>
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="mb-6">
-            <span class="text-gray-600">最新淨值：</span>
-            <span id="res_finalValue" class="text-3xl font-bold text-green-600">--</span>
+        <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
+            <h2 class="text-xl font-bold text-slate-700 mb-4">歷史淨值走勢圖</h2>
+            <div class="relative w-full h-80 md:h-96">
+                <canvas id="myChart"></canvas>
+            </div>
         </div>
 
-        <div class="relative h-96 w-full">
-            <canvas id="myChart"></canvas>
-        </div>
     </div>
 
     <script>
-        // 全域變數
-        let fullData = [];
+        // --- 變數宣告 ---
+        let fullData = []; // 存放所有 [日期, 淨值]
         let myChart = null;
 
-        // --- 核心功能：初始化數據 ---
+        // --- 初始化 ---
         async function initData() {
-            const statusEl = document.getElementById('status-badge');
-            const finalValueEl = document.getElementById('res_finalValue');
-
+            const statusBadge = document.getElementById('status-badge');
+            
             try {
-                // 1. 抓取 data.json
+                // 1. 讀取 GitHub Actions 產生的 data.json
                 const response = await fetch('data.json');
+                if (!response.ok) throw new Error("找不到資料檔");
                 
-                // 檢查是否成功
-                if (!response.ok) {
-                    throw new Error(`找不到資料檔案 (${response.status})`);
-                }
-
                 fullData = await response.json();
 
-                // 2. 獲取最新一筆資料
-                // data.json 格式預期是: [ ["2001-04-03", 10.0], ... ]
-                const lastItem = fullData[fullData.length - 1];
-                const lastDate = lastItem[0];
-                const lastValue = lastItem[1];
+                // 2. 更新狀態與日期範圍
+                const firstDate = fullData[0][0];
+                const lastData = fullData[fullData.length - 1];
+                const lastDate = lastData[0];
+                const lastNav = lastData[1];
 
-                // 3. 更新畫面文字
-                if(statusEl) statusEl.innerText = `數據已更新至 ${lastDate} (共 ${fullData.length} 筆)`;
-                if(finalValueEl) finalValueEl.innerText = lastValue;
+                statusBadge.innerText = `資料已更新至 ${lastDate} (最新淨值: ${lastNav})`;
+                statusBadge.className = "inline-block mt-3 px-4 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full";
 
-                // 4. 繪製圖表
+                // 設定日期選單的範圍與預設值
+                const startInput = document.getElementById('start-date');
+                const endInput = document.getElementById('end-date');
+                
+                startInput.min = firstDate;
+                startInput.max = lastDate;
+                startInput.value = "2020-01-01"; // 預設從 2020 開始，讓曲線比較好看
+
+                endInput.min = firstDate;
+                endInput.max = lastDate;
+                endInput.value = lastDate;
+
+                // 3. 繪製圖表
                 renderChart();
+                
+                // 4. 自動執行一次試算
+                calculate();
 
             } catch (e) {
-                console.error("無法載入數據", e);
-                if(statusEl) {
-                    statusEl.innerText = "❌ 資料讀取失敗";
-                    statusEl.parentElement.classList.replace('bg-blue-100', 'bg-red-100');
-                    statusEl.parentElement.classList.replace('border-blue-500', 'border-red-500');
-                    statusEl.parentElement.classList.replace('text-blue-700', 'text-red-700');
-                }
-                alert("讀取失敗！請確認 GitHub Actions 是否已成功執行。\n詳細錯誤：" + e.message);
+                console.error(e);
+                statusBadge.innerText = "❌ 資料讀取失敗，請稍後再試";
+                statusBadge.className = "inline-block mt-3 px-4 py-1 bg-red-100 text-red-700 text-sm font-medium rounded-full";
+                alert("讀取失敗，請確認 data.json 是否存在。");
             }
         }
 
-        // --- 繪圖功能 ---
+        // --- 核心算法：定期定額回測 ---
+        function calculate() {
+            if (fullData.length === 0) return;
+
+            // 1. 取得使用者輸入
+            const monthlyAmt = parseFloat(document.getElementById('monthly-amount').value);
+            const deductDay = parseInt(document.getElementById('deduct-day').value);
+            const startDateStr = document.getElementById('start-date').value;
+            const endDateStr = document.getElementById('end-date').value;
+
+            // 2. 篩選日期範圍內的資料
+            // data.json 格式: ["YYYY-MM-DD", 123.45]
+            const startIndex = fullData.findIndex(d => d[0] >= startDateStr);
+            let endIndex = fullData.findIndex(d => d[0] > endDateStr);
+            if (endIndex === -1) endIndex = fullData.length;
+
+            const periodData = fullData.slice(startIndex, endIndex);
+
+            // 3. 開始模擬投資
+            let totalCost = 0;
+            let totalUnits = 0;
+            let lastInvestMonth = ""; // 用來避免同一個月重複扣款
+
+            periodData.forEach(row => {
+                const dateStr = row[0]; // "2023-05-06"
+                const nav = row[1];
+                
+                const dateObj = new Date(dateStr);
+                const day = dateObj.getDate();
+                const monthStr = dateStr.substring(0, 7); // "2023-05"
+
+                // 判斷是否為扣款日 (簡單邏輯：只要該日期 >= 設定日 且 該月還沒扣過)
+                // 實際基金運作若遇假日會順延，這邊簡化為「遇到有資料且日期 >= 設定日」就買
+                if (day >= deductDay && lastInvestMonth !== monthStr) {
+                    // 執行買入
+                    const unitsBought = monthlyAmt / nav;
+                    totalUnits += unitsBought;
+                    totalCost += monthlyAmt;
+                    lastInvestMonth = monthStr; // 標記本月已扣款
+                }
+            });
+
+            // 4. 計算結果
+            // 取得區間內最後一天的淨值作為結算價
+            const finalNav = periodData.length > 0 ? periodData[periodData.length - 1][1] : 0;
+            const finalValue = totalUnits * finalNav;
+            const roi = totalCost > 0 ? ((finalValue - totalCost) / totalCost) * 100 : 0;
+
+            // 5. 更新畫面 (加上千分位逗號)
+            document.getElementById('res-total-cost').innerText = Math.round(totalCost).toLocaleString();
+            document.getElementById('res-final-value').innerText = Math.round(finalValue).toLocaleString();
+            document.getElementById('res-units').innerText = totalUnits.toFixed(2);
+            document.getElementById('res-last-date').innerText = periodData.length > 0 ? periodData[periodData.length - 1][0] : "--";
+
+            // 處理 ROI 顏色
+            const roiEl = document.getElementById('res-roi');
+            roiEl.innerText = roi.toFixed(2) + "%";
+            if (roi > 0) {
+                roiEl.className = "text-2xl font-bold text-red-500"; // 賺錢紅字
+                roiEl.innerText = "+" + roiEl.innerText;
+            } else if (roi < 0) {
+                roiEl.className = "text-2xl font-bold text-green-500"; // 賠錢綠字
+            } else {
+                roiEl.className = "text-2xl font-bold text-gray-500";
+            }
+        }
+
+        // --- 繪圖函式 ---
         function renderChart() {
             const ctx = document.getElementById('myChart').getContext('2d');
             
-            // 準備 X 軸 (日期) 和 Y 軸 (淨值) 數據
-            const labels = fullData.map(item => item[0]);
-            const prices = fullData.map(item => item[1]);
+            // 為了效能，如果資料太多，可以考慮抽樣，但這裡先全畫
+            const labels = fullData.map(x => x[0]);
+            const prices = fullData.map(x => x[1]);
 
-            if (myChart) {
-                myChart.destroy(); // 如果圖表已存在，先銷毀
-            }
+            if (myChart) myChart.destroy();
 
             myChart = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: '基金淨值',
+                        label: '基金淨值 (TWD)',
                         data: prices,
-                        borderColor: 'rgb(37, 99, 235)', // 藍色線條
-                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
-                        borderWidth: 1,
-                        pointRadius: 0, // 不顯示每個點，讓線條更平滑
+                        borderColor: '#2563eb', // Tailwind Blue-600
+                        backgroundColor: 'rgba(37, 99, 235, 0.05)',
+                        borderWidth: 1.5,
+                        pointRadius: 0, // 不顯示點，線條更平滑
+                        pointHoverRadius: 4,
                         fill: true,
                         tension: 0.1
                     }]
@@ -107,25 +260,31 @@
                         intersect: false,
                     },
                     plugins: {
+                        legend: { display: false },
                         tooltip: {
-                            enabled: true
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            titleColor: '#1e293b',
+                            bodyColor: '#1e293b',
+                            borderColor: '#e2e8f0',
+                            borderWidth: 1,
+                            padding: 10,
+                            displayColors: false,
                         }
                     },
                     scales: {
                         x: {
-                            display: true,
-                            title: { display: true, text: '日期' }
+                            grid: { display: false },
+                            ticks: { maxTicksLimit: 8 }
                         },
                         y: {
-                            display: true,
-                            title: { display: true, text: '淨值 (TWD)' }
+                            border: { display: false }
                         }
                     }
                 }
             });
         }
 
-        // 網頁載入後執行
+        // 啟動
         window.onload = initData;
     </script>
 </body>
