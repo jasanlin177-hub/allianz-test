@@ -10,33 +10,35 @@
     <style>
         body { font-family: 'Inter', sans-serif; }
         
-        /* === 客製化雙拉桿滑桿 CSS === */
-        .slider-container { position: relative; height: 30px; margin-top: 10px; }
+        /* === 優化後的滑桿 CSS === */
+        .slider-container { position: relative; height: 40px; margin-top: 10px; touch-action: none; }
+        
+        /* 軌道背景 */
         .slider-track {
             position: absolute; top: 50%; transform: translateY(-50%);
             height: 6px; width: 100%; background: #e2e8f0; border-radius: 999px; z-index: 1;
         }
+        /* 選取範圍 (藍色條) */
         .slider-range {
             position: absolute; top: 50%; transform: translateY(-50%);
             height: 6px; background: #3b82f6; z-index: 2; border-radius: 999px;
+            pointer-events: none; /* 讓點擊穿透 */
         }
+        /* 兩個隱藏的原生 Input，疊在一起 */
         input[type=range] {
-            position: absolute; pointer-events: none; -webkit-appearance: none;
-            z-index: 3; height: 10px; width: 100%; opacity: 0; cursor: pointer;
+            position: absolute; pointer-events: auto; -webkit-appearance: none;
+            z-index: 3; height: 100%; width: 100%; opacity: 0; cursor: pointer;
+            top: 0; margin: 0;
         }
-        input[type=range]::-webkit-slider-thumb {
-            pointer-events: all; width: 20px; height: 20px; -webkit-appearance: none;
-            background-color: #fff; border: 2px solid #3b82f6; border-radius: 50%;
-            cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: -8px; /* Offset for track center */
-        }
-        /* 視覺上的拇指 (因為 input 被隱藏了，我們用 div 模擬顯示) */
+        /* 視覺上的圓點 (Thumb) */
         .thumb {
             position: absolute; top: 50%; transform: translate(-50%, -50%);
-            width: 20px; height: 20px; background: #fff; border: 2px solid #2563eb;
-            border-radius: 50%; z-index: 4; box-shadow: 0 1px 3px rgba(0,0,0,0.2); pointer-events: none;
-            transition: transform 0.1s;
+            width: 24px; height: 24px; background: #fff; border: 2px solid #2563eb;
+            border-radius: 50%; z-index: 4; box-shadow: 0 2px 5px rgba(0,0,0,0.2); pointer-events: none;
+            transition: transform 0.1s, box-shadow 0.1s;
         }
-        .thumb.active { transform: translate(-50%, -50%) scale(1.2); }
+        /* 讓圓點看起來有互動感 */
+        .slider-container:hover .thumb { box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
     </style>
 </head>
 <body class="bg-slate-50 min-h-screen pb-12">
@@ -88,7 +90,7 @@
                 </div>
 
                 <div class="border-t border-slate-100 pt-4">
-                    <button onclick="calculate()" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                    <button onclick="forceRecalculate()" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
                         重新計算
                     </button>
                 </div>
@@ -98,16 +100,16 @@
                 <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">回測期間選擇</h2>
                 
                 <div class="flex justify-between text-sm font-medium text-slate-700 mb-2">
-                    <span id="label-start-date">--</span>
-                    <span id="label-end-date">--</span>
+                    <span id="label-start-date" class="tabular-nums">--</span>
+                    <span id="label-end-date" class="tabular-nums">--</span>
                 </div>
 
                 <div class="slider-container">
                     <div class="slider-track"></div>
                     <div class="slider-range" id="slider-range"></div>
                     
-                    <input type="range" id="range-start" min="0" max="100" value="0">
-                    <input type="range" id="range-end" min="0" max="100" value="100">
+                    <input type="range" id="range-start" min="0" max="100" value="0" step="1">
+                    <input type="range" id="range-end" min="0" max="100" value="100" step="1">
                     
                     <div class="thumb" id="thumb-start"></div>
                     <div class="thumb" id="thumb-end"></div>
@@ -189,128 +191,146 @@
 
     <script>
         // --- 變數宣告 ---
-        let fullData = []; // 原始數據 [[Date, Price], ...]
-        let displayData = []; // 滑桿篩選後的數據
+        let fullData = []; 
+        let displayData = []; 
         let chartNAV = null;
         let chartDrawdown = null;
+        let debounceTimer = null; // 用於延遲計算，解決滑桿卡頓
 
         // --- 初始化 ---
         async function initData() {
             const statusDot = document.getElementById('status-dot');
             
             try {
-                // 1. 讀取 GitHub Actions 產生的 data.json
                 const response = await fetch('data.json');
                 if (!response.ok) throw new Error("找不到資料檔");
                 
                 fullData = await response.json();
 
-                // 更新狀態
                 const lastDate = fullData[fullData.length - 1][0];
                 statusDot.innerHTML = `<span class="w-2.5 h-2.5 bg-green-500 rounded-full mr-2"></span> 數據更新至 ${lastDate}`;
 
-                // 2. 初始化滑桿
                 initSlider();
-
-                // 3. 第一次渲染
+                
+                // 初始顯示最近 3 年 (或全部如果不足3年)
+                const rangeStart = document.getElementById('range-start');
+                const rangeEnd = document.getElementById('range-end');
+                const startIdx = Math.max(0, fullData.length - 750); // 大約3年
+                
+                rangeStart.value = startIdx;
+                rangeEnd.value = fullData.length - 1;
+                
+                // 觸發一次視覺更新
+                updateSliderVisuals();
+                // 觸發一次計算
                 updateCharts();
 
             } catch (e) {
                 console.error(e);
                 statusDot.innerHTML = `<span class="w-2.5 h-2.5 bg-red-500 rounded-full mr-2"></span> 讀取失敗`;
-                alert("資料讀取失敗！請確認 GitHub Actions 是否已執行。");
             }
         }
 
-        // --- 滑桿邏輯 (雙向連動) ---
+        // --- 滑桿邏輯 (優化版) ---
         function initSlider() {
             const rangeStart = document.getElementById('range-start');
             const rangeEnd = document.getElementById('range-end');
-            
-            // 設定滑桿範圍 (對應陣列索引)
             const maxIdx = fullData.length - 1;
+
             rangeStart.max = maxIdx;
             rangeEnd.max = maxIdx;
-            
-            // 預設範圍：全部
-            rangeStart.value = 0;
-            rangeEnd.value = maxIdx;
 
-            // 事件監聽
-            function updateSliderUI() {
-                let startVal = parseInt(rangeStart.value);
-                let endVal = parseInt(rangeEnd.value);
-
-                // 防止交叉
-                if (startVal >= endVal) {
-                    if (this === rangeStart) {
-                        rangeStart.value = endVal - 30; // 最小間隔
-                    } else {
-                        rangeEnd.value = startVal + 30;
-                    }
-                }
-                
-                // 視覺更新
-                const percentStart = (rangeStart.value / maxIdx) * 100;
-                const percentEnd = (rangeEnd.value / maxIdx) * 100;
-                
-                document.getElementById('slider-range').style.left = percentStart + '%';
-                document.getElementById('slider-range').style.width = (percentEnd - percentStart) + '%';
-                
-                document.getElementById('thumb-start').style.left = percentStart + '%';
-                document.getElementById('thumb-end').style.left = percentEnd + '%';
-
-                // 更新文字標籤
-                document.getElementById('label-start-date').innerText = fullData[rangeStart.value][0];
-                document.getElementById('label-end-date').innerText = fullData[rangeEnd.value][0];
-
-                // 觸發圖表更新 (Debounce 或直接更新)
-                updateCharts();
-            }
-
-            rangeStart.oninput = updateSliderUI;
-            rangeEnd.oninput = updateSliderUI;
-            
-            // 初始化 UI
-            updateSliderUI();
+            // 監聽輸入事件
+            rangeStart.addEventListener('input', handleSliderInput);
+            rangeEnd.addEventListener('input', handleSliderInput);
         }
 
-        // --- 核心算法：圖表與回測計算 ---
+        // 處理滑動輸入：視覺立即更新，計算延遲執行 (Debounce)
+        function handleSliderInput(e) {
+            const rangeStart = document.getElementById('range-start');
+            const rangeEnd = document.getElementById('range-end');
+            
+            let startVal = parseInt(rangeStart.value);
+            let endVal = parseInt(rangeEnd.value);
+
+            // 防止交叉 (最少保留 20 筆資料)
+            const minGap = 20;
+            if (e.target.id === 'range-start') {
+                if (startVal > endVal - minGap) {
+                    rangeStart.value = endVal - minGap;
+                }
+            } else {
+                if (endVal < startVal + minGap) {
+                    rangeEnd.value = startVal + minGap;
+                }
+            }
+
+            // 1. 立即更新視覺 (不卡頓)
+            updateSliderVisuals();
+
+            // 2. 延遲更新圖表 (解決效能問題)
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                updateCharts();
+            }, 100); // 停止滑動 100ms 後才重畫圖表
+        }
+
+        function updateSliderVisuals() {
+            const rangeStart = document.getElementById('range-start');
+            const rangeEnd = document.getElementById('range-end');
+            const maxIdx = fullData.length - 1;
+            
+            const percentStart = (rangeStart.value / maxIdx) * 100;
+            const percentEnd = (rangeEnd.value / maxIdx) * 100;
+            
+            document.getElementById('slider-range').style.left = percentStart + '%';
+            document.getElementById('slider-range').style.width = (percentEnd - percentStart) + '%';
+            
+            document.getElementById('thumb-start').style.left = percentStart + '%';
+            document.getElementById('thumb-end').style.left = percentEnd + '%';
+
+            // 更新文字
+            const startIdx = parseInt(rangeStart.value);
+            const endIdx = parseInt(rangeEnd.value);
+            if(fullData[startIdx]) document.getElementById('label-start-date').innerText = fullData[startIdx][0];
+            if(fullData[endIdx]) document.getElementById('label-end-date').innerText = fullData[endIdx][0];
+        }
+
+        // --- 強制重新計算 (按鈕用) ---
+        function forceRecalculate() {
+            updateCharts();
+        }
+
+        // --- 核心算法 ---
         function updateCharts() {
             const rangeStart = parseInt(document.getElementById('range-start').value);
             const rangeEnd = parseInt(document.getElementById('range-end').value);
             
-            // 切割數據
             displayData = fullData.slice(rangeStart, rangeEnd + 1);
             if (displayData.length === 0) return;
 
-            // 準備圖表數據
             const labels = displayData.map(d => d[0]);
             const prices = displayData.map(d => d[1]);
 
-            // 計算 Drawdown (水下圖)
-            // 算法：(當前價格 - 至今最高價) / 至今最高價
+            // 計算 Drawdown
             let peak = -Infinity;
             const drawdowns = prices.map(price => {
                 if (price > peak) peak = price;
                 return ((price - peak) / peak) * 100;
             });
 
-            // 繪製圖表
             renderNAVChart(labels, prices);
             renderDrawdownChart(labels, drawdowns);
-
-            // 執行回測計算
-            calculate();
+            calculateMetrics();
         }
 
-        function calculate() {
+        function calculateMetrics() {
             if (displayData.length === 0) return;
 
-            const lumpSumAmt = parseFloat(document.getElementById('lump-sum-amount').value);
-            const dcaAmt = parseFloat(document.getElementById('dca-amount').value);
+            const lumpSumAmt = parseFloat(document.getElementById('lump-sum-amount').value) || 0;
+            const dcaAmt = parseFloat(document.getElementById('dca-amount').value) || 0;
 
-            // 1. 單筆投入計算 (假設第一天買入)
+            // 1. 單筆投入
             const startPrice = displayData[0][1];
             const endPrice = displayData[displayData.length - 1][1];
             
@@ -318,7 +338,7 @@
             const lsFinalValue = lsUnits * endPrice;
             const lsRoi = ((lsFinalValue - lumpSumAmt) / lumpSumAmt) * 100;
 
-            // 2. 定期定額計算 (每月 1 號扣款)
+            // 2. 定期定額 (每月1號)
             let totalCost = 0;
             let totalUnits = 0;
             let lastInvestMonth = "";
@@ -326,9 +346,8 @@
             displayData.forEach(row => {
                 const dateStr = row[0];
                 const nav = row[1];
-                const monthStr = dateStr.substring(0, 7); // YYYY-MM
+                const monthStr = dateStr.substring(0, 7);
 
-                // 邏輯：如果這個月還沒扣過款，就扣款 (模擬每月 1 號，或是 1 號休市就順延到有數據的第一天)
                 if (lastInvestMonth !== monthStr) {
                     const unitsBought = dcaAmt / nav;
                     totalUnits += unitsBought;
@@ -340,24 +359,27 @@
             const dcaFinalValue = totalUnits * endPrice;
             const dcaRoi = totalCost > 0 ? ((dcaFinalValue - totalCost) / totalCost) * 100 : 0;
 
-            // 更新 UI
-            updateResultUI('res-ls-final', 'res-ls-roi', lumpSumAmt, lsFinalValue, lsRoi);
-            updateResultUI('res-dca-final', 'res-dca-roi', totalCost, dcaFinalValue, dcaRoi);
+            updateResultUI('res-ls-final', 'res-ls-roi', lsFinalValue, lsRoi);
+            updateResultUI('res-dca-final', 'res-dca-roi', dcaFinalValue, dcaRoi);
             document.getElementById('res-dca-cost').innerText = formatCurrency(totalCost);
         }
 
-        // 輔助函式：更新結果卡片顏色與數值
-        function updateResultUI(idFinal, idRoi, cost, final, roi) {
+        function updateResultUI(idFinal, idRoi, final, roi) {
             document.getElementById(idFinal).innerText = formatCurrency(final);
-            
             const roiEl = document.getElementById(idRoi);
+            
             roiEl.innerText = roi.toFixed(2) + "%";
             
+            // 移除舊顏色 class
+            roiEl.classList.remove('bg-red-100', 'text-red-800', 'bg-green-100', 'text-green-800', 'bg-gray-100', 'text-gray-800');
+            
             if (roi > 0) {
-                roiEl.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-red-100 text-red-800";
+                roiEl.classList.add('bg-red-100', 'text-red-800');
                 roiEl.innerText = "+" + roiEl.innerText;
+            } else if (roi < 0) {
+                roiEl.classList.add('bg-green-100', 'text-green-800');
             } else {
-                roiEl.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-green-100 text-green-800";
+                roiEl.classList.add('bg-gray-100', 'text-gray-800');
             }
         }
 
@@ -365,7 +387,7 @@
             return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(num);
         }
 
-        // --- Chart.js 繪圖 ---
+        // --- 圖表繪製 ---
         function renderNAVChart(labels, data) {
             const ctx = document.getElementById('chartNAV').getContext('2d');
             if (chartNAV) chartNAV.destroy();
@@ -377,7 +399,7 @@
                     datasets: [{
                         label: '基金淨值',
                         data: data,
-                        borderColor: '#2563eb', // Blue 600
+                        borderColor: '#2563eb',
                         backgroundColor: (context) => {
                             const ctx = context.chart.ctx;
                             const gradient = ctx.createLinearGradient(0, 0, 0, 300);
@@ -398,7 +420,7 @@
                     interaction: { mode: 'index', intersect: false },
                     plugins: { legend: { display: false } },
                     scales: {
-                        x: { display: false }, // 隱藏 X 軸標籤讓畫面更乾淨
+                        x: { display: false },
                         y: { position: 'right' }
                     }
                 }
@@ -416,8 +438,8 @@
                     datasets: [{
                         label: '回撤幅度 (%)',
                         data: data,
-                        borderColor: '#dc2626', // Red 600
-                        backgroundColor: 'rgba(220, 38, 38, 0.1)', // 淡淡的紅色填充
+                        borderColor: '#dc2626',
+                        backgroundColor: 'rgba(220, 38, 38, 0.1)',
                         borderWidth: 1,
                         pointRadius: 0,
                         pointHoverRadius: 4,
@@ -435,16 +457,20 @@
                         },
                         y: { 
                             position: 'right',
-                            min: Math.min(...data) * 1.1, // 自動調整下限
+                            min: Math.min(...data) * 1.1,
                             max: 0,
-                            ticks: { callback: (v) => v + '%' }
+                            ticks: {
+                                // 修正重點：只顯示小數點後 1 位
+                                callback: function(value) {
+                                    return value.toFixed(1) + '%';
+                                }
+                            }
                         }
                     }
                 }
             });
         }
 
-        // 啟動
         window.onload = initData;
     </script>
 </body>
