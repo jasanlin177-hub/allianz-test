@@ -3,119 +3,200 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>安聯台灣科技基金 - 淨值回測系統</title>
+    <title>安聯台灣科技基金 - 專業回測儀表板</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Noto Sans TC', sans-serif; }
+        body { font-family: 'Inter', sans-serif; }
+        
+        /* === 客製化雙拉桿滑桿 CSS === */
+        .slider-container { position: relative; height: 30px; margin-top: 10px; }
+        .slider-track {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            height: 6px; width: 100%; background: #e2e8f0; border-radius: 999px; z-index: 1;
+        }
+        .slider-range {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            height: 6px; background: #3b82f6; z-index: 2; border-radius: 999px;
+        }
+        input[type=range] {
+            position: absolute; pointer-events: none; -webkit-appearance: none;
+            z-index: 3; height: 10px; width: 100%; opacity: 0; cursor: pointer;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            pointer-events: all; width: 20px; height: 20px; -webkit-appearance: none;
+            background-color: #fff; border: 2px solid #3b82f6; border-radius: 50%;
+            cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: -8px; /* Offset for track center */
+        }
+        /* 視覺上的拇指 (因為 input 被隱藏了，我們用 div 模擬顯示) */
+        .thumb {
+            position: absolute; top: 50%; transform: translate(-50%, -50%);
+            width: 20px; height: 20px; background: #fff; border: 2px solid #2563eb;
+            border-radius: 50%; z-index: 4; box-shadow: 0 1px 3px rgba(0,0,0,0.2); pointer-events: none;
+            transition: transform 0.1s;
+        }
+        .thumb.active { transform: translate(-50%, -50%) scale(1.2); }
     </style>
 </head>
-<body class="bg-slate-100 min-h-screen py-8 px-4">
+<body class="bg-slate-50 min-h-screen pb-12">
 
-    <div class="max-w-5xl mx-auto space-y-6">
-        
-        <header class="text-center mb-8">
-            <h1 class="text-3xl md:text-4xl font-bold text-slate-800 tracking-tight">安聯台灣科技基金</h1>
-            <p class="text-slate-500 mt-2">歷史淨值回測與定期定額試算</p>
-            <div id="status-badge" class="inline-block mt-3 px-4 py-1 bg-blue-100 text-blue-700 text-sm font-medium rounded-full">
-                正在連線至資料庫...
+    <nav class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex items-center">
+                    <span class="bg-blue-600 text-white p-1.5 rounded-lg mr-3">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg>
+                    </span>
+                    <h1 class="text-xl font-bold text-slate-800">安聯台灣科技基金 <span class="text-slate-400 font-normal text-sm ml-2">回測系統 Pro</span></h1>
+                </div>
+                <div id="status-dot" class="flex items-center text-sm text-slate-500">
+                    <span class="w-2.5 h-2.5 bg-yellow-400 rounded-full mr-2 animate-pulse"></span> 載入數據中...
+                </div>
             </div>
-        </header>
+        </div>
+    </nav>
 
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            <div class="bg-white rounded-2xl shadow-sm p-6 lg:col-span-1 border border-slate-200">
-                <h2 class="text-xl font-bold text-slate-700 mb-5 flex items-center">
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path></svg>
-                    試算設定
-                </h2>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <div class="lg:col-span-3 space-y-6">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4">回測參數設定</h2>
                 
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">每月定期定額 (TWD)</label>
-                        <div class="relative">
-                            <span class="absolute left-3 top-2 text-slate-400">$</span>
-                            <input type="number" id="monthly-amount" value="5000" class="w-full pl-8 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition" placeholder="例如: 5000">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">單筆投入金額</label>
+                    <div class="relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span class="text-slate-500 sm:text-sm">$</span>
                         </div>
+                        <input type="number" id="lump-sum-amount" value="100000" class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-slate-300 rounded-md border" placeholder="100000">
                     </div>
+                </div>
 
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">每月扣款日</label>
-                        <select id="deduct-day" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-                            <option value="6">每月 6 號</option>
-                            <option value="16">每月 16 號</option>
-                            <option value="26">每月 26 號</option>
-                        </select>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-sm font-medium text-slate-600 mb-1">開始日期</label>
-                            <input type="date" id="start-date" class="w-full px-2 py-2 border border-slate-300 rounded-lg text-sm">
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">每月定期定額</label>
+                    <div class="relative rounded-md shadow-sm">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <span class="text-slate-500 sm:text-sm">$</span>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-slate-600 mb-1">結束日期</label>
-                            <input type="date" id="end-date" class="w-full px-2 py-2 border border-slate-300 rounded-lg text-sm">
-                        </div>
+                        <input type="number" id="dca-amount" value="5000" class="focus:ring-blue-500 focus:border-blue-500 block w-full pl-7 pr-3 py-2 sm:text-sm border-slate-300 rounded-md border" placeholder="5000">
                     </div>
+                    <p class="text-xs text-slate-400 mt-2 flex items-center">
+                        <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg>
+                        每月 1 號自動扣款
+                    </p>
+                </div>
 
-                    <button onclick="calculate()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/30 transition transform active:scale-95">
-                        開始試算 🚀
+                <div class="border-t border-slate-100 pt-4">
+                    <button onclick="calculate()" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
+                        重新計算
                     </button>
                 </div>
             </div>
 
-            <div class="bg-white rounded-2xl shadow-sm p-6 lg:col-span-2 border border-slate-200">
-                <h2 class="text-xl font-bold text-slate-700 mb-5">試算結果</h2>
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <h2 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-2">回測期間選擇</h2>
                 
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <p class="text-sm text-slate-500 mb-1">總投入本金</p>
-                        <p id="res-total-cost" class="text-2xl font-bold text-slate-800">0</p>
-                    </div>
-
-                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <p class="text-sm text-slate-500 mb-1">目前資產現值</p>
-                        <p id="res-final-value" class="text-2xl font-bold text-slate-800">0</p>
-                    </div>
-
-                    <div class="p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <p class="text-sm text-slate-500 mb-1">累積報酬率</p>
-                        <p id="res-roi" class="text-2xl font-bold text-gray-400">0.0%</p>
-                    </div>
+                <div class="flex justify-between text-sm font-medium text-slate-700 mb-2">
+                    <span id="label-start-date">--</span>
+                    <span id="label-end-date">--</span>
                 </div>
 
-                <div class="mt-6 pt-6 border-t border-slate-100 grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                        <span class="text-slate-500">累積單位數：</span>
-                        <span id="res-units" class="font-semibold text-slate-700">0</span>
-                    </div>
-                    <div>
-                        <span class="text-slate-500">最新淨值日：</span>
-                        <span id="res-last-date" class="font-semibold text-slate-700">--</span>
-                    </div>
+                <div class="slider-container">
+                    <div class="slider-track"></div>
+                    <div class="slider-range" id="slider-range"></div>
+                    
+                    <input type="range" id="range-start" min="0" max="100" value="0">
+                    <input type="range" id="range-end" min="0" max="100" value="100">
+                    
+                    <div class="thumb" id="thumb-start"></div>
+                    <div class="thumb" id="thumb-end"></div>
                 </div>
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm p-6 border border-slate-200">
-            <h2 class="text-xl font-bold text-slate-700 mb-4">歷史淨值走勢圖</h2>
-            <div class="relative w-full h-80 md:h-96">
-                <canvas id="myChart"></canvas>
-            </div>
-        </div>
+        <div class="lg:col-span-9 space-y-6">
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-3 opacity-10">
+                        <svg class="w-16 h-16" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"></path></svg>
+                    </div>
+                    <h3 class="text-slate-500 text-sm font-medium">單筆投入績效 (Lump Sum)</h3>
+                    <div class="mt-2 flex items-baseline">
+                        <span id="res-ls-final" class="text-2xl font-bold text-slate-900">--</span>
+                        <span class="ml-2 text-sm text-slate-500">總資產</span>
+                    </div>
+                    <div class="mt-1">
+                        <span id="res-ls-roi" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                            0.00%
+                        </span>
+                        <span class="text-xs text-slate-400 ml-1">報酬率</span>
+                    </div>
+                </div>
 
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-3 opacity-10">
+                        <svg class="w-16 h-16" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"></path></svg>
+                    </div>
+                    <h3 class="text-slate-500 text-sm font-medium">定期定額績效 (DCA)</h3>
+                    <div class="mt-2 flex items-baseline">
+                        <span id="res-dca-final" class="text-2xl font-bold text-slate-900">--</span>
+                        <span class="ml-2 text-sm text-slate-500">總資產</span>
+                    </div>
+                    <div class="mt-1 flex justify-between items-center pr-4">
+                        <div>
+                            <span id="res-dca-roi" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
+                                0.00%
+                            </span>
+                            <span class="text-xs text-slate-400 ml-1">報酬率</span>
+                        </div>
+                        <div class="text-xs text-slate-400">
+                            投入成本: <span id="res-dca-cost">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-slate-800">歷史淨值走勢 (NAV)</h3>
+                </div>
+                <div class="relative h-72 w-full">
+                    <canvas id="chartNAV"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-slate-800 flex items-center">
+                        回撤風險 (Underwater Plot)
+                        <div class="group relative ml-2">
+                            <svg class="w-4 h-4 text-slate-400 cursor-help" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            <span class="group-hover:opacity-100 transition-opacity bg-gray-800 px-2 py-1 text-xs text-white rounded-md absolute left-1/2 -translate-x-1/2 bottom-full mb-2 opacity-0 w-48 text-center pointer-events-none">
+                                顯示當前價格距離歷史最高點跌了多少百分比。
+                            </span>
+                        </div>
+                    </h3>
+                </div>
+                <div class="relative h-48 w-full">
+                    <canvas id="chartDrawdown"></canvas>
+                </div>
+            </div>
+
+        </div>
     </div>
 
     <script>
         // --- 變數宣告 ---
-        let fullData = []; // 存放所有 [日期, 淨值]
-        let myChart = null;
+        let fullData = []; // 原始數據 [[Date, Price], ...]
+        let displayData = []; // 滑桿篩選後的數據
+        let chartNAV = null;
+        let chartDrawdown = null;
 
         // --- 初始化 ---
         async function initData() {
-            const statusBadge = document.getElementById('status-badge');
+            const statusDot = document.getElementById('status-dot');
             
             try {
                 // 1. 讀取 GitHub Actions 產生的 data.json
@@ -124,129 +205,188 @@
                 
                 fullData = await response.json();
 
-                // 2. 更新狀態與日期範圍
-                const firstDate = fullData[0][0];
-                const lastData = fullData[fullData.length - 1];
-                const lastDate = lastData[0];
-                const lastNav = lastData[1];
+                // 更新狀態
+                const lastDate = fullData[fullData.length - 1][0];
+                statusDot.innerHTML = `<span class="w-2.5 h-2.5 bg-green-500 rounded-full mr-2"></span> 數據更新至 ${lastDate}`;
 
-                statusBadge.innerText = `資料已更新至 ${lastDate} (最新淨值: ${lastNav})`;
-                statusBadge.className = "inline-block mt-3 px-4 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full";
+                // 2. 初始化滑桿
+                initSlider();
 
-                // 設定日期選單的範圍與預設值
-                const startInput = document.getElementById('start-date');
-                const endInput = document.getElementById('end-date');
-                
-                startInput.min = firstDate;
-                startInput.max = lastDate;
-                startInput.value = "2020-01-01"; // 預設從 2020 開始，讓曲線比較好看
-
-                endInput.min = firstDate;
-                endInput.max = lastDate;
-                endInput.value = lastDate;
-
-                // 3. 繪製圖表
-                renderChart();
-                
-                // 4. 自動執行一次試算
-                calculate();
+                // 3. 第一次渲染
+                updateCharts();
 
             } catch (e) {
                 console.error(e);
-                statusBadge.innerText = "❌ 資料讀取失敗，請稍後再試";
-                statusBadge.className = "inline-block mt-3 px-4 py-1 bg-red-100 text-red-700 text-sm font-medium rounded-full";
-                alert("讀取失敗，請確認 data.json 是否存在。");
+                statusDot.innerHTML = `<span class="w-2.5 h-2.5 bg-red-500 rounded-full mr-2"></span> 讀取失敗`;
+                alert("資料讀取失敗！請確認 GitHub Actions 是否已執行。");
             }
         }
 
-        // --- 核心算法：定期定額回測 ---
+        // --- 滑桿邏輯 (雙向連動) ---
+        function initSlider() {
+            const rangeStart = document.getElementById('range-start');
+            const rangeEnd = document.getElementById('range-end');
+            
+            // 設定滑桿範圍 (對應陣列索引)
+            const maxIdx = fullData.length - 1;
+            rangeStart.max = maxIdx;
+            rangeEnd.max = maxIdx;
+            
+            // 預設範圍：全部
+            rangeStart.value = 0;
+            rangeEnd.value = maxIdx;
+
+            // 事件監聽
+            function updateSliderUI() {
+                let startVal = parseInt(rangeStart.value);
+                let endVal = parseInt(rangeEnd.value);
+
+                // 防止交叉
+                if (startVal >= endVal) {
+                    if (this === rangeStart) {
+                        rangeStart.value = endVal - 30; // 最小間隔
+                    } else {
+                        rangeEnd.value = startVal + 30;
+                    }
+                }
+                
+                // 視覺更新
+                const percentStart = (rangeStart.value / maxIdx) * 100;
+                const percentEnd = (rangeEnd.value / maxIdx) * 100;
+                
+                document.getElementById('slider-range').style.left = percentStart + '%';
+                document.getElementById('slider-range').style.width = (percentEnd - percentStart) + '%';
+                
+                document.getElementById('thumb-start').style.left = percentStart + '%';
+                document.getElementById('thumb-end').style.left = percentEnd + '%';
+
+                // 更新文字標籤
+                document.getElementById('label-start-date').innerText = fullData[rangeStart.value][0];
+                document.getElementById('label-end-date').innerText = fullData[rangeEnd.value][0];
+
+                // 觸發圖表更新 (Debounce 或直接更新)
+                updateCharts();
+            }
+
+            rangeStart.oninput = updateSliderUI;
+            rangeEnd.oninput = updateSliderUI;
+            
+            // 初始化 UI
+            updateSliderUI();
+        }
+
+        // --- 核心算法：圖表與回測計算 ---
+        function updateCharts() {
+            const rangeStart = parseInt(document.getElementById('range-start').value);
+            const rangeEnd = parseInt(document.getElementById('range-end').value);
+            
+            // 切割數據
+            displayData = fullData.slice(rangeStart, rangeEnd + 1);
+            if (displayData.length === 0) return;
+
+            // 準備圖表數據
+            const labels = displayData.map(d => d[0]);
+            const prices = displayData.map(d => d[1]);
+
+            // 計算 Drawdown (水下圖)
+            // 算法：(當前價格 - 至今最高價) / 至今最高價
+            let peak = -Infinity;
+            const drawdowns = prices.map(price => {
+                if (price > peak) peak = price;
+                return ((price - peak) / peak) * 100;
+            });
+
+            // 繪製圖表
+            renderNAVChart(labels, prices);
+            renderDrawdownChart(labels, drawdowns);
+
+            // 執行回測計算
+            calculate();
+        }
+
         function calculate() {
-            if (fullData.length === 0) return;
+            if (displayData.length === 0) return;
 
-            // 1. 取得使用者輸入
-            const monthlyAmt = parseFloat(document.getElementById('monthly-amount').value);
-            const deductDay = parseInt(document.getElementById('deduct-day').value);
-            const startDateStr = document.getElementById('start-date').value;
-            const endDateStr = document.getElementById('end-date').value;
+            const lumpSumAmt = parseFloat(document.getElementById('lump-sum-amount').value);
+            const dcaAmt = parseFloat(document.getElementById('dca-amount').value);
 
-            // 2. 篩選日期範圍內的資料
-            // data.json 格式: ["YYYY-MM-DD", 123.45]
-            const startIndex = fullData.findIndex(d => d[0] >= startDateStr);
-            let endIndex = fullData.findIndex(d => d[0] > endDateStr);
-            if (endIndex === -1) endIndex = fullData.length;
+            // 1. 單筆投入計算 (假設第一天買入)
+            const startPrice = displayData[0][1];
+            const endPrice = displayData[displayData.length - 1][1];
+            
+            const lsUnits = lumpSumAmt / startPrice;
+            const lsFinalValue = lsUnits * endPrice;
+            const lsRoi = ((lsFinalValue - lumpSumAmt) / lumpSumAmt) * 100;
 
-            const periodData = fullData.slice(startIndex, endIndex);
-
-            // 3. 開始模擬投資
+            // 2. 定期定額計算 (每月 1 號扣款)
             let totalCost = 0;
             let totalUnits = 0;
-            let lastInvestMonth = ""; // 用來避免同一個月重複扣款
+            let lastInvestMonth = "";
 
-            periodData.forEach(row => {
-                const dateStr = row[0]; // "2023-05-06"
+            displayData.forEach(row => {
+                const dateStr = row[0];
                 const nav = row[1];
-                
-                const dateObj = new Date(dateStr);
-                const day = dateObj.getDate();
-                const monthStr = dateStr.substring(0, 7); // "2023-05"
+                const monthStr = dateStr.substring(0, 7); // YYYY-MM
 
-                // 判斷是否為扣款日 (簡單邏輯：只要該日期 >= 設定日 且 該月還沒扣過)
-                // 實際基金運作若遇假日會順延，這邊簡化為「遇到有資料且日期 >= 設定日」就買
-                if (day >= deductDay && lastInvestMonth !== monthStr) {
-                    // 執行買入
-                    const unitsBought = monthlyAmt / nav;
+                // 邏輯：如果這個月還沒扣過款，就扣款 (模擬每月 1 號，或是 1 號休市就順延到有數據的第一天)
+                if (lastInvestMonth !== monthStr) {
+                    const unitsBought = dcaAmt / nav;
                     totalUnits += unitsBought;
-                    totalCost += monthlyAmt;
-                    lastInvestMonth = monthStr; // 標記本月已扣款
+                    totalCost += dcaAmt;
+                    lastInvestMonth = monthStr;
                 }
             });
 
-            // 4. 計算結果
-            // 取得區間內最後一天的淨值作為結算價
-            const finalNav = periodData.length > 0 ? periodData[periodData.length - 1][1] : 0;
-            const finalValue = totalUnits * finalNav;
-            const roi = totalCost > 0 ? ((finalValue - totalCost) / totalCost) * 100 : 0;
+            const dcaFinalValue = totalUnits * endPrice;
+            const dcaRoi = totalCost > 0 ? ((dcaFinalValue - totalCost) / totalCost) * 100 : 0;
 
-            // 5. 更新畫面 (加上千分位逗號)
-            document.getElementById('res-total-cost').innerText = Math.round(totalCost).toLocaleString();
-            document.getElementById('res-final-value').innerText = Math.round(finalValue).toLocaleString();
-            document.getElementById('res-units').innerText = totalUnits.toFixed(2);
-            document.getElementById('res-last-date').innerText = periodData.length > 0 ? periodData[periodData.length - 1][0] : "--";
+            // 更新 UI
+            updateResultUI('res-ls-final', 'res-ls-roi', lumpSumAmt, lsFinalValue, lsRoi);
+            updateResultUI('res-dca-final', 'res-dca-roi', totalCost, dcaFinalValue, dcaRoi);
+            document.getElementById('res-dca-cost').innerText = formatCurrency(totalCost);
+        }
 
-            // 處理 ROI 顏色
-            const roiEl = document.getElementById('res-roi');
+        // 輔助函式：更新結果卡片顏色與數值
+        function updateResultUI(idFinal, idRoi, cost, final, roi) {
+            document.getElementById(idFinal).innerText = formatCurrency(final);
+            
+            const roiEl = document.getElementById(idRoi);
             roiEl.innerText = roi.toFixed(2) + "%";
+            
             if (roi > 0) {
-                roiEl.className = "text-2xl font-bold text-red-500"; // 賺錢紅字
+                roiEl.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-red-100 text-red-800";
                 roiEl.innerText = "+" + roiEl.innerText;
-            } else if (roi < 0) {
-                roiEl.className = "text-2xl font-bold text-green-500"; // 賠錢綠字
             } else {
-                roiEl.className = "text-2xl font-bold text-gray-500";
+                roiEl.className = "inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium bg-green-100 text-green-800";
             }
         }
 
-        // --- 繪圖函式 ---
-        function renderChart() {
-            const ctx = document.getElementById('myChart').getContext('2d');
-            
-            // 為了效能，如果資料太多，可以考慮抽樣，但這裡先全畫
-            const labels = fullData.map(x => x[0]);
-            const prices = fullData.map(x => x[1]);
+        function formatCurrency(num) {
+            return new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', maximumFractionDigits: 0 }).format(num);
+        }
 
-            if (myChart) myChart.destroy();
+        // --- Chart.js 繪圖 ---
+        function renderNAVChart(labels, data) {
+            const ctx = document.getElementById('chartNAV').getContext('2d');
+            if (chartNAV) chartNAV.destroy();
 
-            myChart = new Chart(ctx, {
+            chartNAV = new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: '基金淨值 (TWD)',
-                        data: prices,
-                        borderColor: '#2563eb', // Tailwind Blue-600
-                        backgroundColor: 'rgba(37, 99, 235, 0.05)',
-                        borderWidth: 1.5,
-                        pointRadius: 0, // 不顯示點，線條更平滑
+                        label: '基金淨值',
+                        data: data,
+                        borderColor: '#2563eb', // Blue 600
+                        backgroundColor: (context) => {
+                            const ctx = context.chart.ctx;
+                            const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+                            gradient.addColorStop(0, 'rgba(37, 99, 235, 0.2)');
+                            gradient.addColorStop(1, 'rgba(37, 99, 235, 0)');
+                            return gradient;
+                        },
+                        borderWidth: 2,
+                        pointRadius: 0,
                         pointHoverRadius: 4,
                         fill: true,
                         tension: 0.1
@@ -255,29 +395,49 @@
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                            titleColor: '#1e293b',
-                            bodyColor: '#1e293b',
-                            borderColor: '#e2e8f0',
-                            borderWidth: 1,
-                            padding: 10,
-                            displayColors: false,
-                        }
-                    },
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { display: false } },
                     scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: { maxTicksLimit: 8 }
+                        x: { display: false }, // 隱藏 X 軸標籤讓畫面更乾淨
+                        y: { position: 'right' }
+                    }
+                }
+            });
+        }
+
+        function renderDrawdownChart(labels, data) {
+            const ctx = document.getElementById('chartDrawdown').getContext('2d');
+            if (chartDrawdown) chartDrawdown.destroy();
+
+            chartDrawdown = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '回撤幅度 (%)',
+                        data: data,
+                        borderColor: '#dc2626', // Red 600
+                        backgroundColor: 'rgba(220, 38, 38, 0.1)', // 淡淡的紅色填充
+                        borderWidth: 1,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { 
+                            ticks: { maxTicksLimit: 6, maxRotation: 0 } 
                         },
-                        y: {
-                            border: { display: false }
+                        y: { 
+                            position: 'right',
+                            min: Math.min(...data) * 1.1, // 自動調整下限
+                            max: 0,
+                            ticks: { callback: (v) => v + '%' }
                         }
                     }
                 }
