@@ -2,7 +2,7 @@ name: Daily Allianz NAV Update
 
 on:
   schedule:
-    - cron: '0 15 * * *'
+    - cron: '0 11 * * *'
   workflow_dispatch:
 
 # --- 加入這段 (強制開啟寫入權限) ---
